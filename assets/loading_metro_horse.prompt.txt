@@ -1,0 +1,13 @@
+Generation mode: built-in image generation
+
+Use case: stylized-concept
+Asset type: PSP game loading-screen artwork, 16:9 landscape
+Input images: Image 1 is the user's custom red horse artwork and must appear as the main pasted paper poster; Images 2-5 are environment, material, lighting, and graffiti references only.
+Primary request: create an original minimal brutalist underground metro passage built from white square ceramic tile walls, tagged with restrained black spray-paint graffiti, with the custom red horse image mounted as a slightly worn poster. Add exactly one strong continuous signal-red stripe running horizontally along a wall and turning through the perspective onto the floor edge.
+Scene/backdrop: empty underground pedestrian corridor, white tile grid, exposed concrete lintels and ceiling, utilitarian fluorescent fixtures, a little grime and chipped grout, no people.
+Style/medium: cinematic environmental concept art with photoreal material texture, restrained 1990s documentary photography grain, designed to remain legible when reduced to 480x272.
+Composition/framing: wide eye-level one-point perspective, bold simple shapes, poster clearly visible as the sole focal image, useful darker negative space near the bottom-right for a small loading indicator.
+Lighting/mood: cold fluorescent white with deep charcoal shadows; tense, quiet, austere.
+Color palette: white, concrete gray, soot black, and one vivid signal red only.
+Constraints: preserve the recognizable composition and red-on-white appearance of the supplied horse poster; no additional posters with readable copy; no characters; no brand logos; no watermark; no UI; no extra bright colors.
+Avoid: glossy sci-fi station, colorful murals, clutter, trains, platforms, illegible generated typography, warm orange lighting.

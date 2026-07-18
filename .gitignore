@@ -1,0 +1,9 @@
+*.d
+*.elf
+*.o
+*.prx
+*.pyc
+__pycache__/
+EBOOT.PBP
+PARAM.SFO
+tests/test_core

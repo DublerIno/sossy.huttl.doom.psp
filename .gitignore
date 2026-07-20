@@ -7,3 +7,6 @@ __pycache__/
 EBOOT.PBP
 PARAM.SFO
 tests/test_core
+SCORES.DAT
+SCORES.DAT.TMP
+SCORES.DAT.BAK

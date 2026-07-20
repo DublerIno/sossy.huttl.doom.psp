@@ -1,10 +1,9 @@
 # Sossy X Huttl art handoff
 
-The prototype is self-contained and playable. Its current map textures,
-sprites, UI and audio are procedural in `renderer.c` and `audio.c`; the metro
-horse loading screen is already authored and compiled into the EBOOT. Supply
-original assets with the names and dimensions below for a later authored-art
-pass; they can be converted to RGB565 and compiled into the EBOOT.
+The prototype is self-contained and playable. Map surfaces and sound effects
+remain procedural, while the title, loading screen, character, pickups,
+first-person camera and soundtrack are authored and compiled into the EBOOT.
+The remaining specifications below describe optional future expansion.
 
 ## Current loading art
 
@@ -45,12 +44,26 @@ Opaque, seamless PNG, 64x64 pixels each:
 Keep opposite edges tileable. Texture lighting should be mostly neutral
 because the raycaster applies distance and wall-side shading.
 
-## Sprites
+## Current sprite art
+
+- `sprites/enemy_karel.png`, 128x128: Karel wearing the white horse shirt
+- `sprites/beer.png`, 128x128: healing pickup
+- `sprites/kodak_film.png`, 128x128: ammunition pickup
+- `sprites/camera_first_person.png`, 192x96: held retro camera and hands
+- `generated/*_cutout.png`: high-resolution transparent source cutouts
+- `generated/sprite_generation_prompts.txt`: exact built-in prompt set
+
+`tools/prepare_sprite_assets.py` crops, palette-reduces and compiles these into
+`sprite_assets.c` and `sprite_assets.h` as PSP RGB565 with a transparent key.
+The 128px textures replace the original procedural 64px sprite functions but
+retain the 240x136 world buffer for reliable E1004 performance.
+
+## Future sprite animation
 
 Transparent PNG. Keep every frame aligned to the same bottom-center origin.
 The single enemy design may be reused for every enemy.
 
-Enemy frames, 64x64 each:
+Enemy frames, 128x128 each:
 
 - `enemy/idle_0.png`, `idle_1.png`
 - `enemy/walk_0.png` through `walk_3.png`
@@ -58,11 +71,9 @@ Enemy frames, 64x64 each:
 - `enemy/hurt_0.png`
 - `enemy/captured_0.png` through `captured_3.png`
 
-World objects:
+Optional world objects:
 
-- `objects/film.png`, 32x32: a clearly readable film canister/roll
-- `objects/tonic.png`, 32x32: darkroom chemistry or restorative bottle
-- `objects/exit.png`, 64x64: archive lift, developing-room door, or portal
+- `objects/exit.png`, 128x128: archive lift, developing-room door, or portal
 
 Use hard or lightly feathered alpha edges. Leave at least two transparent
 pixels around sprites so perspective scaling does not clip them.
@@ -80,14 +91,22 @@ Small UI lettering should therefore be designed at 1x and checked at 2x.
 
 ## Audio
 
-WAV, signed 16-bit PCM, mono, 44100 Hz (22050 Hz is also acceptable):
+The current soundtrack master is `soundtrack.mp3` (48 kHz stereo). PSP
+firmware's MP3 decoder requires 44.1 kHz, so `soundtrack_psp.mp3` is the
+derived 128 kbps stereo copy embedded into the PRX and looped by `audio.c`.
+Run `sh tools/prepare_soundtrack.sh` to regenerate it without changing the
+master. Procedural sound effects are mixed simultaneously on a separate PSP
+audio channel.
+
+Optional authored sound effects should be WAV, signed 16-bit PCM, mono,
+44100 Hz (22050 Hz is also acceptable):
 
 - `audio/shutter.wav`
 - `audio/empty.wav`
 - `audio/exposure_hit.wav`
 - `audio/capture.wav`
 - `audio/film_pickup.wav`
-- `audio/tonic_pickup.wav`
+- `audio/beer_pickup.wav`
 - `audio/hurt.wav`
 - `audio/door.wav`
 - `audio/floor_transition.wav`
@@ -99,6 +118,6 @@ detail. The ambience should leave headroom for the shutter and hit feedback.
 
 ## Most useful first delivery
 
-For a fast visual upgrade, the highest-impact first batch is the seven world
-textures, the enemy animation frames, `film.png`, `tonic.png`, and the menu
-icon. Audio and UI polish can follow without blocking level/gameplay work.
+The highest-impact next batch is the seven world textures, enemy animation
+frames derived from the current Karel anchor, and the menu icon. Authored sound
+effects can follow without blocking level/gameplay work.

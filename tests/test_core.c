@@ -5,6 +5,8 @@
 
 #include "album.h"
 #include "game.h"
+#include "leaderboard.h"
+#include "tag_editor.h"
 #include "world.h"
 
 static int failures = 0;
@@ -151,6 +153,20 @@ static void test_collision_and_interaction(void)
           "opened door becomes walkable floor");
 }
 
+static void test_results_gate(void)
+{
+    FFGame game;
+    FFInput input;
+    memset(&game, 0, sizeof(game));
+    memset(&input, 0, sizeof(input));
+    game.mode = FF_MODE_RESULTS;
+    game.score = 1234;
+    input.confirm_pressed = true;
+    ff_game_update(&game, &input, 0.016f);
+    CHECK(game.mode == FF_MODE_RESULTS && game.score == 1234,
+          "results remain visible until the application opens tag ranking");
+}
+
 static void test_long_run(void)
 {
     FFGame game;
@@ -193,13 +209,229 @@ static void test_album(void)
           "thumbnail downsampling averages RGB565 source texels");
 }
 
+static void test_tag_editor(void)
+{
+    FFTagEditor editor;
+    FFTagInput input;
+    FFTagBitmap packed;
+    uint8_t unpacked[FF_TAG_PIXEL_COUNT];
+    int center_x = FF_TAG_WIDTH / 2;
+    int center_y = FF_TAG_HEIGHT / 2;
+    int frame;
+
+    ff_tag_editor_reset(&editor);
+    CHECK(ff_tag_editor_is_blank(&editor), "new tag canvas starts blank");
+
+    memset(&input, 0, sizeof(input));
+    input.draw_held = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(editor.pixels[center_y * FF_TAG_WIDTH + center_x] == FF_TAG_BLACK,
+          "X draws black ink at the cursor");
+
+    memset(&input, 0, sizeof(input));
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    input.color_pressed = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    memset(&input, 0, sizeof(input));
+    input.dpad_x = 1;
+    input.draw_held = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(editor.pixels[center_y * FF_TAG_WIDTH + center_x + 1] == FF_TAG_RED,
+          "Square switches drawing to signal red");
+
+    memset(&input, 0, sizeof(input));
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    input.undo_pressed = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(editor.pixels[center_y * FF_TAG_WIDTH + center_x] == FF_TAG_BLACK &&
+          editor.pixels[center_y * FF_TAG_WIDTH + center_x + 1] == FF_TAG_EMPTY,
+          "Triangle restores the canvas before the previous stroke");
+
+    memset(&input, 0, sizeof(input));
+    input.draw_held = true;
+    input.dpad_x = 2;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    memset(&input, 0, sizeof(input));
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    input.clear_held = true;
+    for (frame = 0; frame < 8; ++frame) {
+        ff_tag_editor_update(&editor, &input, 0.1f);
+    }
+    CHECK(ff_tag_editor_is_blank(&editor), "holding L and R clears the canvas");
+    memset(&input, 0, sizeof(input));
+    input.undo_pressed = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(!ff_tag_editor_is_blank(&editor), "a cleared canvas can be undone");
+
+    ff_tag_pack(editor.pixels, &packed);
+    memset(unpacked, 0, sizeof(unpacked));
+    ff_tag_unpack(&packed, unpacked);
+    CHECK(memcmp(unpacked, editor.pixels, sizeof(unpacked)) == 0,
+          "two-bit tag packing preserves every canvas pixel");
+    CHECK(ff_tag_bitmap_pixel(&packed, center_x, center_y) == FF_TAG_BLACK,
+          "packed tag pixels can be sampled for leaderboard rendering");
+
+    ff_tag_editor_reset(&editor);
+    editor.cursor_x = 2.0f;
+    editor.cursor_y = 2.0f;
+    memset(&input, 0, sizeof(input));
+    input.analog_x = 1.0f;
+    input.draw_held = true;
+    ff_tag_editor_update(&editor, &input, 0.1f);
+    CHECK(editor.pixels[2 * FF_TAG_WIDTH + 2] == FF_TAG_BLACK &&
+          editor.pixels[2 * FF_TAG_WIDTH + 3] == FF_TAG_BLACK &&
+          editor.pixels[2 * FF_TAG_WIDTH + 4] == FF_TAG_BLACK,
+          "analog cursor movement interpolates a continuous stroke");
+    memset(&input, 0, sizeof(input));
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    input.erase_held = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(editor.pixels[2 * FF_TAG_WIDTH + 4] == FF_TAG_EMPTY,
+          "Circle erases the pixel under the cursor");
+    memset(&input, 0, sizeof(input));
+    input.analog_x = 1.0f;
+    input.analog_y = -1.0f;
+    for (frame = 0; frame < 100; ++frame) {
+        ff_tag_editor_update(&editor, &input, 0.1f);
+    }
+    CHECK(editor.cursor_x == (float)(FF_TAG_WIDTH - 1) &&
+          editor.cursor_y == 0.0f,
+          "tag cursor remains clamped to the canvas");
+
+    ff_tag_editor_reset(&editor);
+    memset(&input, 0, sizeof(input));
+    input.finish_pressed = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(!editor.confirming && editor.message_seconds > 0.0f,
+          "blank tags cannot open the save confirmation");
+    memset(&input, 0, sizeof(input));
+    input.draw_held = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    memset(&input, 0, sizeof(input));
+    input.finish_pressed = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    CHECK(editor.confirming, "non-empty tags open the save confirmation");
+    memset(&input, 0, sizeof(input));
+    input.cancel_pressed = true;
+    CHECK(!ff_tag_editor_update(&editor, &input, 0.016f) && !editor.confirming,
+          "Circle returns from confirmation to editing");
+    memset(&input, 0, sizeof(input));
+    input.finish_pressed = true;
+    ff_tag_editor_update(&editor, &input, 0.016f);
+    memset(&input, 0, sizeof(input));
+    input.confirm_pressed = true;
+    CHECK(ff_tag_editor_update(&editor, &input, 0.016f),
+          "X confirms and submits a finished tag");
+}
+
+static FFTagBitmap make_test_tag(int value)
+{
+    FFTagBitmap tag;
+    memset(&tag, 0, sizeof(tag));
+    tag.data[0] = (uint8_t)((value & 1) ? FF_TAG_RED : FF_TAG_BLACK);
+    return tag;
+}
+
+static void test_leaderboard(void)
+{
+    FFLeaderboard leaderboard;
+    FFLeaderboard loaded;
+    FFTagBitmap tag;
+    uint8_t serialized[FF_LEADERBOARD_FILE_MAX_BYTES];
+    size_t serialized_size;
+    uint32_t replaced_sequence;
+    char path[128];
+    int score;
+
+    ff_leaderboard_reset(&leaderboard);
+    CHECK(leaderboard.count == 0 && ff_leaderboard_page_count(&leaderboard) == 1,
+          "empty leaderboard still exposes one display page");
+    for (score = 0; score < 25; ++score) {
+        tag = make_test_tag(score);
+        ff_leaderboard_insert(&leaderboard, score * 10, &tag);
+    }
+    CHECK(leaderboard.count == FF_LEADERBOARD_CAPACITY,
+          "leaderboard retains exactly the top twenty runs");
+    CHECK(leaderboard.entries[0].score == 240 &&
+          leaderboard.entries[19].score == 50,
+          "leaderboard evicts the five lowest scores");
+    CHECK(ff_leaderboard_page_count(&leaderboard) == 4,
+          "twenty entries produce four five-entry pages");
+    CHECK(!ff_leaderboard_qualifies(&leaderboard, 49),
+          "a score below twentieth place does not qualify");
+    CHECK(ff_leaderboard_qualifies(&leaderboard, 50),
+          "a score tied with twentieth place qualifies");
+    replaced_sequence = leaderboard.entries[19].sequence;
+    tag = make_test_tag(99);
+    CHECK(ff_leaderboard_insert(&leaderboard, 50, &tag) == 19,
+          "a newest equal score replaces the older tied entry");
+    CHECK(leaderboard.entries[19].sequence > replaced_sequence,
+          "equal scores use newest-first ordering");
+    CHECK(ff_leaderboard_insert(&leaderboard, 49, &tag) == -1,
+          "non-qualifying insertion leaves the table unchanged");
+
+    serialized_size = ff_leaderboard_serialize(
+        &leaderboard, serialized, sizeof(serialized));
+    CHECK(serialized_size > 0 &&
+          ff_leaderboard_deserialize(&loaded, serialized, serialized_size),
+          "versioned leaderboard data survives a serialization round trip");
+    CHECK(loaded.count == leaderboard.count &&
+          loaded.entries[0].score == leaderboard.entries[0].score &&
+          memcmp(loaded.entries[19].tag.data,
+                 leaderboard.entries[19].tag.data,
+                 FF_TAG_PACKED_BYTES) == 0,
+          "round-tripped scores and tags match the source table");
+    CHECK(!ff_leaderboard_deserialize(&loaded, serialized,
+                                      serialized_size - 1),
+          "truncated leaderboard data is rejected");
+    serialized[0] ^= 0x01u;
+    CHECK(!ff_leaderboard_deserialize(&loaded, serialized, serialized_size),
+          "unknown leaderboard magic is rejected");
+    serialized[0] ^= 0x01u;
+    serialized[8] = 2u;
+    CHECK(!ff_leaderboard_deserialize(&loaded, serialized, serialized_size),
+          "unknown leaderboard versions are rejected");
+    serialized[8] = 1u;
+    serialized[20] ^= 0x40u;
+    CHECK(!ff_leaderboard_deserialize(&loaded, serialized, serialized_size),
+          "CRC validation rejects damaged leaderboard data");
+
+    CHECK(ff_leaderboard_make_path(path, sizeof(path),
+              "ms0:/PSP/GAME/SOSSYXHUTTL/EBOOT.PBP") &&
+          strcmp(path, "ms0:/PSP/GAME/SOSSYXHUTTL/SCORES.DAT") == 0,
+          "save path follows the EBOOT directory on PSP storage");
+    CHECK(ff_leaderboard_make_path(path, sizeof(path), "EBOOT.PBP") &&
+          strcmp(path, "SCORES.DAT") == 0,
+          "save path has a safe relative fallback");
+
+    strcpy(path, "test_scores.dat");
+    remove(path);
+    remove("test_scores.dat.TMP");
+    remove("test_scores.dat.BAK");
+    CHECK(ff_leaderboard_load(&loaded, path) ==
+              FF_LEADERBOARD_LOAD_NOT_FOUND,
+          "a missing score file is treated as an empty first launch");
+    CHECK(ff_leaderboard_save(&leaderboard, path),
+          "leaderboard writes an atomic score file");
+    ff_leaderboard_reset(&loaded);
+    CHECK(ff_leaderboard_load(&loaded, path) == FF_LEADERBOARD_LOAD_OK &&
+          loaded.count == leaderboard.count,
+          "saved scores load from disk with their full entry count");
+    remove(path);
+    remove("test_scores.dat.TMP");
+    remove("test_scores.dat.BAK");
+}
+
 int main(void)
 {
     test_generation();
     test_photography();
     test_collision_and_interaction();
+    test_results_gate();
     test_long_run();
     test_album();
+    test_tag_editor();
+    test_leaderboard();
 
     if (failures != 0) {
         fprintf(stderr, "%d of %d checks failed\n", failures, checks);

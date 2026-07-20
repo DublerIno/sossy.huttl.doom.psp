@@ -1,7 +1,9 @@
 #include "album.h"
 #include "audio.h"
 #include "game.h"
+#include "leaderboard.h"
 #include "renderer.h"
+#include "tag_editor.h"
 
 #include <math.h>
 #include <pspctrl.h>
@@ -21,6 +23,14 @@ PSP_HEAP_SIZE_KB(8192);
 static volatile int g_running = 1;
 static FFGame g_game;
 static FFAlbum g_album;
+static FFLeaderboard g_leaderboard;
+static FFTagEditor g_tag_editor;
+static char g_score_path[FF_LEADERBOARD_PATH_CAPACITY];
+static const char *g_load_notice;
+static const char *g_leaderboard_notice;
+static int g_leaderboard_page;
+static int g_highlight_rank = -1;
+static bool g_tag_wait_for_release;
 
 static int ff_exit_callback(int argument_one, int argument_two, void *common)
 {
@@ -91,6 +101,77 @@ static FFInput ff_read_input(const SceCtrlData *pad, unsigned int pressed)
     return input;
 }
 
+static FFTagInput ff_read_tag_input(const SceCtrlData *pad,
+                                    unsigned int pressed)
+{
+    FFTagInput input;
+    memset(&input, 0, sizeof(input));
+    input.analog_x = ff_analog_axis(pad->Lx);
+    input.analog_y = ff_analog_axis(pad->Ly);
+    if (pressed & PSP_CTRL_LEFT) --input.dpad_x;
+    if (pressed & PSP_CTRL_RIGHT) ++input.dpad_x;
+    if (pressed & PSP_CTRL_UP) --input.dpad_y;
+    if (pressed & PSP_CTRL_DOWN) ++input.dpad_y;
+    input.draw_held = (pad->Buttons & PSP_CTRL_CROSS) != 0;
+    input.erase_held = (pad->Buttons & PSP_CTRL_CIRCLE) != 0;
+    input.color_pressed = (pressed & PSP_CTRL_SQUARE) != 0;
+    input.undo_pressed = (pressed & PSP_CTRL_TRIANGLE) != 0;
+    input.clear_held = (pad->Buttons & PSP_CTRL_LTRIGGER) != 0 &&
+                       (pad->Buttons & PSP_CTRL_RTRIGGER) != 0;
+    input.finish_pressed = (pressed & PSP_CTRL_START) != 0;
+    input.confirm_pressed = (pressed & PSP_CTRL_CROSS) != 0;
+    input.cancel_pressed = (pressed & PSP_CTRL_CIRCLE) != 0;
+    return input;
+}
+
+static void ff_start_new_run(int *loading_frames)
+{
+    ff_game_start_run(&g_game, g_game.run_seed + 0x9E3779B9u);
+    ff_album_reset(&g_album);
+    *loading_frames = FF_LOADING_FRAMES;
+    g_leaderboard_notice = NULL;
+    g_highlight_rank = -1;
+}
+
+static void ff_open_leaderboard(int page, int highlight_rank,
+                                const char *notice)
+{
+    int page_count = ff_leaderboard_page_count(&g_leaderboard);
+    if (page < 0) page = 0;
+    if (page >= page_count) page = page_count - 1;
+    g_leaderboard_page = page;
+    g_highlight_rank = highlight_rank;
+    g_leaderboard_notice = notice;
+    g_game.mode = FF_MODE_LEADERBOARD;
+}
+
+static void ff_enter_tag_editor(void)
+{
+    ff_tag_editor_reset(&g_tag_editor);
+    g_tag_wait_for_release = true;
+    g_game.mode = FF_MODE_TAG_EDITOR;
+}
+
+static void ff_submit_tag(void)
+{
+    FFTagBitmap tag;
+    int rank;
+    bool saved;
+    ff_tag_pack(g_tag_editor.pixels, &tag);
+    rank = ff_leaderboard_insert(&g_leaderboard, g_game.score, &tag);
+    if (rank < 0) {
+        ff_open_leaderboard(ff_leaderboard_page_count(&g_leaderboard) - 1,
+                            -1, "RUN DID NOT PLACE");
+        return;
+    }
+    saved = g_score_path[0] != '\0' &&
+            ff_leaderboard_save(&g_leaderboard, g_score_path);
+    if (saved) g_load_notice = NULL;
+    ff_open_leaderboard(rank / FF_LEADERBOARD_PAGE_SIZE, rank,
+                        saved ? "NEW TAG SAVED" :
+                                "SAVE FAILED MEMORY ONLY");
+}
+
 int main(int argument_count, char *arguments[])
 {
     SceCtrlData pad;
@@ -101,8 +182,6 @@ int main(int argument_count, char *arguments[])
     int loading_frames = FF_LOADING_FRAMES;
     bool show_debug = false;
 
-    (void)argument_count;
-    (void)arguments;
     ff_setup_callbacks();
     scePowerSetClockFrequency(333, 333, 166);
     sceCtrlSetSamplingCycle(0);
@@ -112,6 +191,22 @@ int main(int argument_count, char *arguments[])
     ff_game_initialize(&g_game,
                        (uint32_t)previous_tick ^ (uint32_t)(previous_tick >> 32));
     ff_album_reset(&g_album);
+    ff_leaderboard_reset(&g_leaderboard);
+    g_score_path[0] = '\0';
+    if (ff_leaderboard_make_path(g_score_path, sizeof(g_score_path),
+                                 argument_count > 0 ? arguments[0] : NULL)) {
+        FFLeaderboardLoadStatus load_status =
+            ff_leaderboard_load(&g_leaderboard, g_score_path);
+        if (load_status == FF_LEADERBOARD_LOAD_INVALID) {
+            ff_leaderboard_reset(&g_leaderboard);
+            g_load_notice = "SCORE DATA RESET";
+        } else if (load_status == FF_LEADERBOARD_LOAD_IO_ERROR) {
+            ff_leaderboard_reset(&g_leaderboard);
+            g_load_notice = "SCORES UNAVAILABLE";
+        }
+    } else {
+        g_load_notice = "SCORES UNAVAILABLE";
+    }
     ff_renderer_initialize();
     ff_audio_initialize();
 
@@ -139,7 +234,6 @@ int main(int argument_count, char *arguments[])
             g_running = 0;
             break;
         }
-        if (pressed & PSP_CTRL_TRIANGLE) show_debug = !show_debug;
         input = ff_read_input(&pad, pressed);
 
         mode_before = g_game.mode;
@@ -148,14 +242,65 @@ int main(int argument_count, char *arguments[])
         if (showing_loading) {
             --loading_frames;
         } else {
-            ff_game_update(&g_game, &input, delta_seconds);
-            if (mode_before != FF_MODE_PLAYING &&
-                mode_before != FF_MODE_PAUSED &&
-                g_game.mode == FF_MODE_PLAYING) {
-                ff_album_reset(&g_album);
-                loading_frames = FF_LOADING_FRAMES;
-                showing_loading = true;
-            } else if (g_game.pending_events & FF_EVENT_NEXT_FLOOR) {
+            if (g_game.mode == FF_MODE_TITLE) {
+                if (pressed & PSP_CTRL_TRIANGLE) {
+                    ff_open_leaderboard(0, -1, g_load_notice);
+                } else if (pressed & PSP_CTRL_CROSS) {
+                    ff_start_new_run(&loading_frames);
+                    showing_loading = true;
+                }
+            } else if (g_game.mode == FF_MODE_RESULTS) {
+                if (pressed & PSP_CTRL_CROSS) {
+                    if (ff_leaderboard_qualifies(&g_leaderboard,
+                                                 g_game.score)) {
+                        ff_enter_tag_editor();
+                    } else {
+                        ff_open_leaderboard(
+                            ff_leaderboard_page_count(&g_leaderboard) - 1,
+                            -1, "RUN DID NOT PLACE");
+                    }
+                }
+            } else if (g_game.mode == FF_MODE_TAG_EDITOR) {
+                const unsigned int tag_buttons =
+                    PSP_CTRL_CROSS | PSP_CTRL_CIRCLE | PSP_CTRL_SQUARE |
+                    PSP_CTRL_TRIANGLE | PSP_CTRL_START | PSP_CTRL_LTRIGGER |
+                    PSP_CTRL_RTRIGGER;
+                if (g_tag_wait_for_release) {
+                    if ((pad.Buttons & tag_buttons) == 0) {
+                        g_tag_wait_for_release = false;
+                    }
+                } else {
+                    FFTagInput tag_input = ff_read_tag_input(&pad, pressed);
+                    if (ff_tag_editor_update(&g_tag_editor, &tag_input,
+                                             delta_seconds)) {
+                        ff_submit_tag();
+                    }
+                }
+            } else if (g_game.mode == FF_MODE_LEADERBOARD) {
+                int page_count = ff_leaderboard_page_count(&g_leaderboard);
+                if ((pressed & PSP_CTRL_LTRIGGER) ||
+                    (pressed & PSP_CTRL_LEFT)) {
+                    if (g_leaderboard_page > 0) --g_leaderboard_page;
+                }
+                if ((pressed & PSP_CTRL_RTRIGGER) ||
+                    (pressed & PSP_CTRL_RIGHT)) {
+                    if (g_leaderboard_page + 1 < page_count) {
+                        ++g_leaderboard_page;
+                    }
+                }
+                if (pressed & PSP_CTRL_CROSS) {
+                    ff_start_new_run(&loading_frames);
+                    showing_loading = true;
+                } else if (pressed & PSP_CTRL_CIRCLE) {
+                    g_game.mode = FF_MODE_TITLE;
+                    g_leaderboard_notice = NULL;
+                    g_highlight_rank = -1;
+                }
+            } else {
+                if (pressed & PSP_CTRL_TRIANGLE) show_debug = !show_debug;
+                ff_game_update(&g_game, &input, delta_seconds);
+            }
+            if (g_game.pending_events & FF_EVENT_NEXT_FLOOR) {
                 loading_frames = FF_LOADING_FRAMES;
                 showing_loading = true;
             }
@@ -188,9 +333,16 @@ int main(int argument_count, char *arguments[])
                                  smoothed_frame_seconds * 1000.0f);
         } else if (g_game.mode == FF_MODE_TITLE) {
             ff_renderer_render_title();
-        } else {
+        } else if (g_game.mode == FF_MODE_RESULTS) {
             ff_audio_play_events(g_game.pending_events);
             ff_renderer_render_results(&g_game, &g_album);
+        } else if (g_game.mode == FF_MODE_TAG_EDITOR) {
+            ff_renderer_render_tag_editor(&g_tag_editor, g_game.score);
+        } else {
+            ff_renderer_render_leaderboard(&g_leaderboard,
+                                           g_leaderboard_page,
+                                           g_highlight_rank,
+                                           g_leaderboard_notice);
         }
         ff_renderer_present();
     }

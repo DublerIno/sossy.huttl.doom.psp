@@ -1,6 +1,7 @@
 #include "renderer.h"
 
 #include "loading_image.h"
+#include "sprite_assets.h"
 #include "title_image.h"
 
 #include <math.h>
@@ -118,6 +119,23 @@ static uint16_t ff_shade(uint16_t color, float amount)
     if (red > 31u) red = 31u;
     if (green > 63u) green = 63u;
     if (blue > 31u) blue = 31u;
+    return (uint16_t)((blue << 11) | (green << 5) | red);
+}
+
+static uint16_t ff_blend_color(uint16_t color, uint16_t target,
+                               unsigned int amount)
+{
+    unsigned int inverse;
+    unsigned int red;
+    unsigned int green;
+    unsigned int blue;
+    if (amount > 256u) amount = 256u;
+    inverse = 256u - amount;
+    red = ((color & 31u) * inverse + (target & 31u) * amount) >> 8;
+    green = (((color >> 5) & 63u) * inverse +
+             ((target >> 5) & 63u) * amount) >> 8;
+    blue = (((color >> 11) & 31u) * inverse +
+            ((target >> 11) & 31u) * amount) >> 8;
     return (uint16_t)((blue << 11) | (green << 5) | red);
 }
 
@@ -490,77 +508,37 @@ static void ff_render_walls(const FFGame *game,
     }
 }
 
+static bool ff_asset_texel(const uint16_t *texture, int width,
+                           int x, int y, uint16_t *color)
+{
+    uint16_t sampled = texture[y * width + x];
+    if (sampled == FF_SPRITE_TRANSPARENT) return false;
+    *color = sampled;
+    return true;
+}
+
 static bool ff_enemy_texel(const FFEnemy *enemy, int x, int y, uint16_t *color)
 {
-    float u = ((float)x + 0.5f) / 64.0f;
-    float v = ((float)y + 0.5f) / 64.0f;
-    float dx = u - 0.5f;
-    float head_y = v - 0.235f;
-    bool head = dx * dx / 0.0256f + head_y * head_y / 0.020f < 1.0f;
-    bool horn_left = v > 0.035f && v < 0.23f &&
-                     fabsf(u - (0.32f - (v - 0.035f) * 0.55f)) < 0.025f;
-    bool horn_right = v > 0.035f && v < 0.23f &&
-                      fabsf(u - (0.68f + (v - 0.035f) * 0.55f)) < 0.025f;
-    bool robe = v >= 0.31f && v < 0.96f &&
-                fabsf(dx) < 0.18f + (v - 0.31f) * 0.25f;
-    bool arms = v > 0.39f && v < 0.68f &&
-                fabsf(dx) < 0.37f - fabsf(v - 0.54f) * 0.25f;
-    bool eye;
-
-    if (!(head || horn_left || horn_right || robe || arms)) return false;
     if (enemy->state == FF_ENEMY_CAPTURED &&
         ((x + y + (int)g_visual_frame) & 3) != 0) return false;
-
-    eye = head && v > 0.21f && v < 0.25f && fabsf(dx) > 0.035f &&
-          fabsf(dx) < 0.105f;
-    if (eye) {
-        *color = enemy->state == FF_ENEMY_HURT
-            ? ff_rgb(255, 240, 220) : ff_rgb(205, 40, 33);
-    } else if (head) {
-        *color = ff_rgb(171, 165, 147);
-    } else if (horn_left || horn_right) {
-        *color = ff_rgb(42, 37, 32);
-    } else if (enemy->state == FF_ENEMY_HURT || enemy->state == FF_ENEMY_CAPTURED) {
-        *color = ff_rgb(203, 197, 178);
-    } else {
-        int fold = ((x / 6) & 1) ? 8 : 0;
-        *color = ff_rgb((unsigned int)(28 + fold),
-                        (unsigned int)(27 + fold),
-                        (unsigned int)(25 + fold));
+    if (!ff_asset_texel(g_ff_enemy_texture, FF_ENEMY_TEXTURE_WIDTH,
+                        x, y, color)) return false;
+    if (enemy->state == FF_ENEMY_HURT) {
+        *color = ff_blend_color(*color, ff_rgb(255, 244, 225), 120u);
+    } else if (enemy->state == FF_ENEMY_CAPTURED) {
+        *color = ff_blend_color(*color, ff_rgb(210, 28, 31), 96u);
     }
     return true;
 }
 
 static bool ff_pickup_texel(FFSpriteType type, int x, int y, uint16_t *color)
 {
-    float u = ((float)x + 0.5f) / 64.0f;
-    float v = ((float)y + 0.5f) / 64.0f;
-    float dx = u - 0.5f;
     if (type == FF_SPRITE_FILM) {
-        bool body = v > 0.26f && v < 0.80f && fabsf(dx) < 0.27f;
-        bool cap = v > 0.20f && v <= 0.30f && fabsf(dx) < 0.20f;
-        bool roll = dx * dx + (v - 0.52f) * (v - 0.52f) < 0.075f;
-        if (!(body || cap || roll)) return false;
-        if (roll && dx * dx + (v - 0.52f) * (v - 0.52f) < 0.018f) {
-            *color = ff_rgb(24, 23, 22);
-        } else if ((x + y) % 11 < 2) {
-            *color = ff_rgb(206, 191, 125);
-        } else {
-            *color = ff_rgb(137, 119, 68);
-        }
-        return true;
+        return ff_asset_texel(g_ff_film_texture, FF_FILM_TEXTURE_WIDTH,
+                              x, y, color);
     }
-    {
-        bool bottle = (v > 0.28f && v < 0.84f && fabsf(dx) < 0.24f) ||
-                      (v > 0.15f && v <= 0.32f && fabsf(dx) < 0.11f);
-        bool cork = v > 0.10f && v <= 0.18f && fabsf(dx) < 0.09f;
-        if (!(bottle || cork)) return false;
-        if (cork) *color = ff_rgb(120, 87, 55);
-        else if (v > 0.51f && fabsf(dx) < 0.20f) {
-            *color = ((x + y) & 3) ? ff_rgb(85, 24, 27) : ff_rgb(142, 37, 38);
-        } else *color = ff_rgb(155, 168, 156);
-        return true;
-    }
+    return ff_asset_texel(g_ff_beer_texture, FF_BEER_TEXTURE_WIDTH,
+                          x, y, color);
 }
 
 static bool ff_exit_texel(int x, int y, uint16_t *color)
@@ -593,6 +571,23 @@ static bool ff_sprite_texel(const FFGame *game, const FFRenderSprite *sprite,
     }
     if (sprite->type == FF_SPRITE_EXIT) return ff_exit_texel(x, y, color);
     return ff_pickup_texel(sprite->type, x, y, color);
+}
+
+static void ff_sprite_texture_size(FFSpriteType type, int *width, int *height)
+{
+    if (type == FF_SPRITE_ENEMY) {
+        *width = FF_ENEMY_TEXTURE_WIDTH;
+        *height = FF_ENEMY_TEXTURE_HEIGHT;
+    } else if (type == FF_SPRITE_FILM) {
+        *width = FF_FILM_TEXTURE_WIDTH;
+        *height = FF_FILM_TEXTURE_HEIGHT;
+    } else if (type == FF_SPRITE_TONIC) {
+        *width = FF_BEER_TEXTURE_WIDTH;
+        *height = FF_BEER_TEXTURE_HEIGHT;
+    } else {
+        *width = 64;
+        *height = 64;
+    }
 }
 
 static void ff_render_sprites(const FFGame *game,
@@ -661,10 +656,12 @@ static void ff_render_sprites(const FFGame *game,
                                        direction_x * relative_y);
         float transform_y = inverse * (-plane_y * relative_x +
                                        plane_x * relative_y);
-        float scale = sprite->type == FF_SPRITE_ENEMY ? 1.05f :
-                      (sprite->type == FF_SPRITE_EXIT ? 1.18f : 0.52f);
+        float scale = sprite->type == FF_SPRITE_ENEMY ? 1.12f :
+                      (sprite->type == FF_SPRITE_EXIT ? 1.18f : 0.68f);
         int sprite_height;
         int sprite_width;
+        int texture_width;
+        int texture_height;
         int screen_center;
         int start_y;
         int end_y;
@@ -676,6 +673,7 @@ static void ff_render_sprites(const FFGame *game,
         sprite_height = (int)(fabsf((float)FF_RENDER_HEIGHT / transform_y) * scale);
         if (sprite_height < 2) continue;
         sprite_width = sprite_height;
+        ff_sprite_texture_size(sprite->type, &texture_width, &texture_height);
         screen_center = (int)((float)FF_RENDER_WIDTH * 0.5f *
                               (1.0f + transform_x / transform_y));
         start_y = FF_RENDER_HEIGHT / 2 - sprite_height / 2;
@@ -693,15 +691,37 @@ static void ff_render_sprites(const FFGame *game,
             int texture_x;
             int y;
             if (transform_y >= g_depth[x]) continue;
-            texture_x = (x - start_x) * 64 / sprite_width;
+            texture_x = (x - start_x) * texture_width / sprite_width;
             for (y = start_y < 0 ? 0 : start_y;
                  y < end_y && y < FF_RENDER_HEIGHT; ++y) {
-                int texture_y = (y - start_y) * 64 / sprite_height;
+                int texture_y = (y - start_y) * texture_height / sprite_height;
                 uint16_t color;
                 if (ff_sprite_texel(game, sprite, texture_x, texture_y, &color)) {
                     float fog = 1.0f / (1.0f + transform_y * 0.055f);
                     g_pixels[y * FF_RENDER_STRIDE + x] = ff_shade(color, fog);
                 }
+            }
+        }
+    }
+}
+
+static void ff_draw_camera_overlay(const FFGame *game)
+{
+    const int destination_width = 144;
+    const int destination_height = 72;
+    int destination_x = (FF_RENDER_WIDTH - destination_width) / 2;
+    int destination_y = 62 + (int)(game->flash_amount * 3.0f);
+    int y;
+    for (y = 0; y < destination_height; ++y) {
+        int source_y = y * FF_CAMERA_TEXTURE_HEIGHT / destination_height;
+        int x;
+        for (x = 0; x < destination_width; ++x) {
+            int source_x = x * FF_CAMERA_TEXTURE_WIDTH / destination_width;
+            uint16_t color = g_ff_camera_texture[
+                source_y * FF_CAMERA_TEXTURE_WIDTH + source_x
+            ];
+            if (color != FF_SPRITE_TRANSPARENT) {
+                ff_pixel(destination_x + x, destination_y + y, color);
             }
         }
     }
@@ -808,6 +828,7 @@ void ff_renderer_draw_hud(const FFGame *game, bool show_debug,
     int film_width;
 
     ff_apply_flash(game->flash_amount);
+    ff_draw_camera_overlay(game);
 
     /* Thin viewfinder corners leave the scene readable. */
     ff_line(42, 18, 60, 18, pale); ff_line(42, 18, 42, 31, pale);
@@ -880,6 +901,9 @@ void ff_renderer_render_title(void)
                FF_TITLE_IMAGE_WIDTH * sizeof(uint16_t));
     }
 
+    ff_rect(86, 105, 68, 10, paper);
+    ff_frame(86, 105, 68, 10, red);
+    ff_text_centered(107, "TRI SCORES", 1, ink);
     ff_rect(70, 117, 100, 14, paper);
     ff_frame(70, 117, 100, 14, red);
     ff_text_centered(121, "PRESS X TO PLAY", 1, ink);
@@ -930,8 +954,157 @@ void ff_renderer_render_results(const FFGame *game, const FFAlbum *album)
             ff_text(x, y + 34, text, 1, ink);
         }
     }
-    ff_text(8, 119, "X NEW CASE", 1, ink);
+    ff_text(8, 119, "X CONTINUE", 1, ink);
     ff_text(152, 119, "SELECT QUIT", 1, ink);
+    ++g_visual_frame;
+}
+
+static uint16_t ff_tag_color(FFTagColor color)
+{
+    if (color == FF_TAG_BLACK) return ff_rgb(20, 20, 19);
+    if (color == FF_TAG_RED) return ff_rgb(181, 19, 27);
+    return ff_rgb(229, 225, 209);
+}
+
+static void ff_draw_tag_pixels(const uint8_t *pixels,
+                               int destination_x, int destination_y,
+                               int scale)
+{
+    int y;
+    uint16_t paper = ff_tag_color(FF_TAG_EMPTY);
+    ff_rect(destination_x, destination_y,
+            FF_TAG_WIDTH * scale, FF_TAG_HEIGHT * scale, paper);
+    for (y = 0; y < FF_TAG_HEIGHT; ++y) {
+        int x;
+        for (x = 0; x < FF_TAG_WIDTH; ++x) {
+            FFTagColor color = (FFTagColor)pixels[y * FF_TAG_WIDTH + x];
+            if (color != FF_TAG_EMPTY) {
+                ff_rect(destination_x + x * scale,
+                        destination_y + y * scale,
+                        scale, scale, ff_tag_color(color));
+            }
+        }
+    }
+}
+
+static void ff_draw_packed_tag(const FFTagBitmap *tag,
+                               int destination_x, int destination_y,
+                               int width, int height)
+{
+    int y;
+    uint16_t paper = ff_tag_color(FF_TAG_EMPTY);
+    ff_rect(destination_x, destination_y, width, height, paper);
+    for (y = 0; y < height; ++y) {
+        int source_y = y * FF_TAG_HEIGHT / height;
+        int x;
+        for (x = 0; x < width; ++x) {
+            int source_x = x * FF_TAG_WIDTH / width;
+            FFTagColor color = ff_tag_bitmap_pixel(tag, source_x, source_y);
+            if (color != FF_TAG_EMPTY) {
+                ff_pixel(destination_x + x, destination_y + y,
+                         ff_tag_color(color));
+            }
+        }
+    }
+}
+
+void ff_renderer_render_tag_editor(const FFTagEditor *editor, int score)
+{
+    const int canvas_x = 24;
+    const int canvas_y = 20;
+    const int canvas_scale = 4;
+    uint16_t concrete = ff_rgb(43, 44, 42);
+    uint16_t paper = ff_tag_color(FF_TAG_EMPTY);
+    uint16_t ink = ff_tag_color(FF_TAG_BLACK);
+    uint16_t red = ff_tag_color(FF_TAG_RED);
+    uint16_t cursor_color = editor->ink == FF_TAG_RED ? red : ink;
+    char text[64];
+    int cursor_x;
+    int cursor_y;
+
+    ff_fill(concrete);
+    ff_rect(3, 3, 234, 130, ff_rgb(196, 196, 187));
+    ff_text(8, 7, "TAG YOUR RUN", 1, ink);
+    snprintf(text, sizeof(text), "SCORE %d", score);
+    ff_text(154 - ff_text_width(text, 1) / 2, 7, text, 1, ink);
+    ff_text(203, 7, editor->ink == FF_TAG_RED ? "RED" : "BLK", 1,
+            cursor_color);
+
+    ff_draw_tag_pixels(editor->pixels, canvas_x, canvas_y, canvas_scale);
+    ff_frame(canvas_x - 1, canvas_y - 1,
+             FF_TAG_WIDTH * canvas_scale + 2,
+             FF_TAG_HEIGHT * canvas_scale + 2, ink);
+
+    cursor_x = canvas_x + (int)(editor->cursor_x + 0.5f) * canvas_scale;
+    cursor_y = canvas_y + (int)(editor->cursor_y + 0.5f) * canvas_scale;
+    ff_frame(cursor_x - 1, cursor_y - 1,
+             canvas_scale + 2, canvas_scale + 2, cursor_color);
+
+    ff_text(8, 104, "X DRAW  O ERASE  SQ COLOR", 1, ink);
+    ff_text(8, 113, "TRI UNDO  HOLD L+R CLEAR", 1, ink);
+    ff_text(8, 122, "START DONE", 1, ink);
+
+    if (editor->message_seconds > 0.0f) {
+        ff_rect(58, 51, 124, 18, paper);
+        ff_frame(58, 51, 124, 18, red);
+        ff_text_centered(57, "DRAW SOMETHING FIRST", 1, red);
+    }
+    if (editor->confirming) {
+        ff_rect(48, 45, 144, 31, paper);
+        ff_frame(48, 45, 144, 31, red);
+        ff_text_centered(50, "SAVE THIS TAG?", 1, ink);
+        ff_text_centered(63, "X SAVE  O EDIT", 1, ink);
+    }
+    ++g_visual_frame;
+}
+
+void ff_renderer_render_leaderboard(const FFLeaderboard *leaderboard,
+                                    int page, int highlight_rank,
+                                    const char *notice)
+{
+    uint16_t concrete = ff_rgb(36, 37, 35);
+    uint16_t paper = ff_rgb(220, 216, 198);
+    uint16_t ink = ff_tag_color(FF_TAG_BLACK);
+    uint16_t red = ff_tag_color(FF_TAG_RED);
+    int page_count = ff_leaderboard_page_count(leaderboard);
+    int first_rank;
+    int row;
+    char text[64];
+
+    if (page < 0) page = 0;
+    if (page >= page_count) page = page_count - 1;
+    first_rank = page * FF_LEADERBOARD_PAGE_SIZE;
+    ff_fill(concrete);
+    ff_rect(3, 3, 234, 130, paper);
+    snprintf(text, sizeof(text), "TAG WALL  PAGE %d/%d", page + 1, page_count);
+    ff_text(8, 4, text, 1, ink);
+    if (notice != NULL && notice[0] != '\0') {
+        ff_text_centered(12, notice, 1, red);
+    }
+
+    if (leaderboard->count == 0) {
+        ff_text_centered(59, "NO TAGS YET", 2, ink);
+    } else {
+        for (row = 0; row < FF_LEADERBOARD_PAGE_SIZE; ++row) {
+            int rank = first_rank + row;
+            int y = 23 + row * 20;
+            if (rank >= leaderboard->count) break;
+            if (rank == highlight_rank) {
+                ff_frame(5, y - 2, 228, 20, red);
+            }
+            snprintf(text, sizeof(text), "%02d", rank + 1);
+            ff_text(7, y + 4, text, 1, rank == highlight_rank ? red : ink);
+            ff_draw_packed_tag(&leaderboard->entries[rank].tag,
+                               23, y, 48, 16);
+            ff_frame(22, y - 1, 50, 18,
+                     rank == highlight_rank ? red : ink);
+            snprintf(text, sizeof(text), "SCORE %d",
+                     leaderboard->entries[rank].score);
+            ff_text(81, y + 4, text, 1,
+                    rank == highlight_rank ? red : ink);
+        }
+    }
+    ff_text_centered(126, "L/R PAGE  X PLAY  O TITLE", 1, ink);
     ++g_visual_frame;
 }
 

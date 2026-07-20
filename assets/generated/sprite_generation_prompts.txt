@@ -1,0 +1,47 @@
+Generation mode: built-in image generation
+
+ENEMY CHARACTER
+Use case: identity-preserve
+Asset type: high-detail 128x128 final PSP first-person raycaster enemy billboard sprite
+Input images: Image 1 is the identity reference for Karel's face, hair, complexion, and expression; Image 2 is the exact red horse artwork reference for the shirt graphic.
+Primary request: create one full-body front-facing male figure whose face is recognizably Karel from Image 1, wearing an oversized clean white T-shirt with a centered simplified red horse graphic matching Image 2, dark straight trousers, and dark shoes. He stands square to camera with feet visible and arms slightly away from the torso, an eerie calm adversary silhouette suitable for photographing rather than shooting.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background for local removal; one uniform color, no floor, no horizon, no shadow, no gradient, no texture.
+Style/medium: polished late-1990s PC game pixel-art character sprite, intentionally pixelated but substantially more detailed than classic Doom, crisp controlled pixel clusters, restrained 64-96 color palette, clear face and fabric folds at 128 pixels tall.
+Composition/framing: single centered full body, straight-on orthographic-like view, generous padding on every side, entire hair and shoes visible.
+Color palette: white, soot black, charcoal, natural skin tones, and signal red; do not use green anywhere on the figure.
+Constraints: preserve Karel's facial identity and short dark hair; preserve the recognizable red-on-white horse graphic; no cigarette, no weapon, no extra person, no cast shadow, no contact shadow, no reflection, no text beyond the graphic, no watermark; hard clean silhouette suitable for chroma-key removal.
+Avoid: photorealistic photography, 3D render, cartoon proportions, blurred edges, green clothing, scenery, dramatic pose, cropped feet or head.
+
+BEER PICKUP
+Use case: stylized-concept
+Asset type: high-detail 128x128 final PSP raycaster healing-item billboard sprite
+Primary request: one collectible amber glass beer bottle with a silver crown cap and a simple cream-and-signal-red paper label, clearly readable as beer at small size.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background for local removal; one uniform color, no floor, no horizon, no shadow, no gradient, no texture.
+Style/medium: polished late-1990s PC game pixel-art item sprite, intentionally pixelated but more detailed than classic Doom, crisp controlled pixel clusters, rich glass highlights and readable bottle silhouette, restrained 48-64 color palette.
+Composition/framing: single bottle centered in a slight three-quarter view, upright, fully contained, generous padding around it.
+Color palette: amber brown glass, near-black shadow, cream label, signal red accent, silver cap; do not use green anywhere on the object.
+Constraints: no brand logo, no readable words, no extra objects, no drinking glass, no foam outside bottle, no cast shadow, no contact shadow, no reflection, no watermark; hard clean silhouette suitable for chroma-key removal.
+Avoid: photorealism, 3D render, smooth vector art, scenery, tilted or cropped bottle.
+
+FILM PICKUP
+Use case: stylized-concept
+Asset type: high-detail 128x128 final PSP raycaster ammunition pickup billboard sprite
+Primary request: one collectible classic Kodak 35mm film pickup consisting of a small yellow-and-red film box beside a black plastic 35mm film canister with a short curled strip of brown photographic film, instantly recognizable at small size.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background for local removal; one uniform color, no floor, no horizon, no shadow, no gradient, no texture.
+Style/medium: polished late-1990s PC game pixel-art item sprite, intentionally pixelated but more detailed than classic Doom, crisp controlled pixel clusters, strong silhouette, restrained 48-64 color palette.
+Composition/framing: one compact centered pickup grouping, slight three-quarter view, fully contained with generous padding.
+Color palette: Kodak-like golden yellow, signal red, black, warm gray, and translucent brown film; do not use green anywhere on the objects.
+Text (verbatim): "KODAK"
+Constraints: render KODAK once and legibly on the yellow box; no other words; no extra objects; no camera; no cast shadow, no contact shadow, no reflection, no watermark; hard clean silhouette suitable for chroma-key removal.
+Avoid: photorealism, 3D render, smooth vector art, scenery, multiple boxes, cropped film strip.
+
+FIRST-PERSON CAMERA
+Use case: stylized-concept
+Asset type: high-detail 192x96 final PSP first-person held-camera overlay sprite, analogous to the centered weapon sprite in a classic raycaster
+Primary request: a compact retro black-and-silver mirrorless camera inspired by Fujifilm industrial design, held in two human hands at the bottom center from the player's first-person viewpoint and aimed forward. Show the camera's rear/top surfaces, small dark rear screen, viewfinder hump, tactile dials, shutter button, leatherette body texture, and the top of the lens projecting away toward the scene.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background for local removal; one uniform color, no environment, no floor, no shadow, no gradient, no texture.
+Style/medium: polished late-1990s PC game pixel-art first-person equipment sprite, intentionally pixelated but more detailed than classic Doom, crisp controlled pixel clusters, detailed metal and leather texture, restrained 64-96 color palette.
+Composition/framing: wide horizontal object centered, player's forearms enter only from the two lower corners, both hands naturally grip the camera, complete silhouette with generous padding at the top and sides; designed to occupy the lower third of a 240x136 game view.
+Color palette: brushed silver, matte black, charcoal, natural skin tones, tiny signal-red accent; do not use green anywhere on camera or hands.
+Constraints: original camera design only; inspired by Fujifilm proportions but no Fujifilm wordmark, no brand logo, no readable text; correct first-person rear/top orientation, no extra objects, no neck strap, no cast shadow, no reflection, no watermark; hard clean silhouette suitable for chroma-key removal.
+Avoid: front-facing product photo, camera facing the player, detached hands, weapon or gun shapes, scenery, photorealism, 3D render, smooth vector art, cropped camera body.

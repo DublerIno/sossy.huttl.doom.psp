@@ -120,18 +120,7 @@ void ff_game_update(FFGame *game, const FFInput *input, float delta_seconds)
         delta_seconds = 0.05f;
     }
 
-    if (game->mode == FF_MODE_TITLE) {
-        if (input->confirm_pressed || input->shutter_pressed) {
-            ff_game_start_run(game, game->run_seed + 0x1020304u);
-        }
-        return;
-    }
-    if (game->mode == FF_MODE_RESULTS) {
-        if (input->confirm_pressed || input->shutter_pressed) {
-            ff_game_start_run(game, game->run_seed + 0x9E3779B9u);
-        }
-        return;
-    }
+    if (game->mode != FF_MODE_PLAYING && game->mode != FF_MODE_PAUSED) return;
     if (input->pause_pressed) {
         game->mode = game->mode == FF_MODE_PAUSED ? FF_MODE_PLAYING : FF_MODE_PAUSED;
     }

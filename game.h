@@ -18,7 +18,9 @@ typedef enum {
     FF_MODE_TITLE = 0,
     FF_MODE_PLAYING,
     FF_MODE_PAUSED,
-    FF_MODE_RESULTS
+    FF_MODE_RESULTS,
+    FF_MODE_TAG_EDITOR,
+    FF_MODE_LEADERBOARD
 } FFGameMode;
 
 typedef struct {
